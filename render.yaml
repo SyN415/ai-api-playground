@@ -1,0 +1,168 @@
+# Render.com Infrastructure Configuration for AI API Playground
+# This file defines all services, databases, and environment configurations
+
+services:
+  # Backend Web Service (Node.js API)
+  - type: web
+    name: ai-api-playground-backend
+    env: node
+    buildCommand: cd backend && npm ci && npm run build
+    startCommand: cd backend && npm run start:production
+    rootDir: .
+    envVars:
+      # Database Configuration
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ai-api-playground-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: ai-api-playground-redis
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: API_KEY_ENCRYPTION_KEY
+        generateValue: true
+      
+      # AI Service API Keys (set these in Render dashboard)
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: MINIMAX_API_KEY
+        sync: false
+      - key: MINIMAX_GROUP_ID
+        sync: false
+      
+      # Application Configuration
+      - key: PORT
+        value: 10000
+      - key: CORS_ORIGIN
+        value: https://ai-api-playground-frontend.onrender.com
+      - key: RATE_LIMIT_WINDOW_MS
+        value: 900000
+      - key: RATE_LIMIT_MAX_REQUESTS
+        value: 100
+      
+      # Logging and Monitoring
+      - key: LOG_LEVEL
+        value: info
+      - key: ENABLE_REQUEST_LOGGING
+        value: true
+      - key: ENABLE_ANALYTICS
+        value: true
+      
+      # Security
+      - key: BCRYPT_ROUNDS
+        value: 12
+      - key: SESSION_SECRET
+        generateValue: true
+      
+      # Webhook Configuration
+      - key: WEBHOOK_SECRET
+        generateValue: true
+      - key: WEBHOOK_TIMEOUT
+        value: 5000
+      
+      # Rate Limiting
+      - key: RATE_LIMIT_REDIS_ENABLED
+        value: true
+      - key: RATE_LIMIT_STANDARD
+        value: 100
+      - key: RATE_LIMIT_PREMIUM
+        value: 1000
+      
+      # Feature Flags
+      - key: ENABLE_WEBHOOKS
+        value: true
+      - key: ENABLE_USAGE_TRACKING
+        value: true
+      - key: ENABLE_MINIMAX_INTEGRATION
+        value: true
+    
+    # Health Check
+    healthCheckPath: /health
+    previewPlan: starter
+    plan: starter plus
+    
+    # Scaling Configuration
+    scaling:
+      minInstances: 1
+      maxInstances: 3
+      targetCPUPercent: 70
+      targetMemoryPercent: 80
+    
+    # Build Filters
+    buildFilter:
+      paths:
+        - backend/*
+        - render.yaml
+        - .github/workflows/deploy.yml
+    
+    # Auto-deploy settings
+    autoDeploy: true
+    branch: main
+
+  # Frontend Static Site (React)
+  - type: web
+    name: ai-api-playground-frontend
+    env: static
+    buildCommand: cd frontend && npm ci && npm run build
+    staticPublishPath: ./frontend/build
+    rootDir: .
+    envVars:
+      - key: REACT_APP_API_BASE_URL
+        fromService:
+          type: web
+          name: ai-api-playground-backend
+          property: url
+      - key: REACT_APP_ENVIRONMENT
+        value: production
+      - key: REACT_APP_ENABLE_ANALYTICS
+        value: true
+      - key: REACT_APP_VERSION
+        value: 1.0.0
+    
+    # Build Filters
+    buildFilter:
+      paths:
+        - frontend/*
+        - render.yaml
+        - .github/workflows/deploy.yml
+    
+    # Auto-deploy settings
+    autoDeploy: true
+    branch: main
+
+# Databases
+databases:
+  # PostgreSQL Database (Optional - using Supabase, but keeping for reference)
+  - name: ai-api-playground-db
+    databaseName: ai_api_playground
+    user: ai_api_playground_user
+    plan: starter
+    postgresVersion: "14"
+    ipAllowList: []  # No IP restrictions for Render services
+
+# Redis Instance for Caching and Rate Limiting
+redis:
+  - name: ai-api-playground-redis
+    plan: starter
+    maxmemoryPolicy: allkeys-lru
+    ipAllowList: []  # No IP restrictions for Render services
+
+# Environment Groups (for shared environment variables)
+envVarGroups:
+  - name: ai-api-common
+    envVars:
+      - key: PROJECT_NAME
+        value: AI API Playground
+      - key: PROJECT_VERSION
+        value: 1.0.0
+      - key: COMPANY_NAME
+        value: AI API Playground Team

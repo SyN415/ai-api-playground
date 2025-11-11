@@ -1,0 +1,215 @@
+{
+  "build": {
+    "backend": {
+      "buildCommand": "cd backend && npm ci && npm run build",
+      "startCommand": "cd backend && npm run start:production",
+      "env": {
+        "NODE_ENV": "production",
+        "NODE_VERSION": "18"
+      }
+    },
+    "frontend": {
+      "buildCommand": "cd frontend && npm ci && npm run build",
+      "staticPublishPath": "./frontend/build",
+      "env": {
+        "NODE_ENV": "production",
+        "NODE_VERSION": "18",
+        "GENERATE_SOURCEMAP": "false",
+        "INLINE_RUNTIME_CHUNK": "false"
+      }
+    }
+  },
+  "deploy": {
+    "preDeploy": {
+      "backend": [
+        "cd backend && npm run lint",
+        "cd backend && npm test",
+        "cd backend && node scripts/health-check.js"
+      ],
+      "frontend": [
+        "cd frontend && npm run lint",
+        "cd frontend && npm test -- --watchAll=false --passWithNoTests"
+      ]
+    },
+    "postDeploy": {
+      "backend": [
+        "cd backend && node scripts/health-check.js",
+        "curl -f $RENDER_EXTERNAL_URL/health || exit 1"
+      ],
+      "frontend": [
+        "echo 'Frontend deployed successfully'"
+      ]
+    }
+  },
+  "environments": {
+    "production": {
+      "backend": {
+        "plan": "starter plus",
+        "region": "oregon",
+        "scaling": {
+          "minInstances": 1,
+          "maxInstances": 3,
+          "targetCPUPercent": 70,
+          "targetMemoryPercent": 80
+        },
+        "healthCheckPath": "/health",
+        "envVars": [
+          {
+            "key": "LOG_LEVEL",
+            "value": "info"
+          },
+          {
+            "key": "ENABLE_ANALYTICS",
+            "value": "true"
+          },
+          {
+            "key": "RATE_LIMIT_REDIS_ENABLED",
+            "value": "true"
+          }
+        ]
+      },
+      "frontend": {
+        "plan": "starter",
+        "region": "oregon"
+      }
+    },
+    "staging": {
+      "backend": {
+        "plan": "starter",
+        "region": "oregon",
+        "scaling": {
+          "minInstances": 1,
+          "maxInstances": 1,
+          "targetCPUPercent": 70,
+          "targetMemoryPercent": 80
+        },
+        "healthCheckPath": "/health",
+        "envVars": [
+          {
+            "key": "LOG_LEVEL",
+            "value": "debug"
+          },
+          {
+            "key": "ENABLE_ANALYTICS",
+            "value": "false"
+          },
+          {
+            "key": "RATE_LIMIT_REDIS_ENABLED",
+            "value": "true"
+          }
+        ]
+      },
+      "frontend": {
+        "plan": "starter",
+        "region": "oregon",
+        "envVars": [
+          {
+            "key": "REACT_APP_ENVIRONMENT",
+            "value": "staging"
+          },
+          {
+            "key": "REACT_APP_ENABLE_ANALYTICS",
+            "value": "false"
+          }
+        ]
+      }
+    }
+  },
+  "services": {
+    "postgres": {
+      "plan": "starter",
+      "version": "14",
+      "region": "oregon"
+    },
+    "redis": {
+      "plan": "starter",
+      "region": "oregon",
+      "maxmemoryPolicy": "allkeys-lru"
+    }
+  },
+  "scripts": {
+    "setup": "bash scripts/setup-render.sh",
+    "deploy:backend": "bash scripts/deploy-backend.sh",
+    "deploy:frontend": "bash scripts/deploy-frontend.sh",
+    "health-check": "node scripts/health-check.js",
+    "monitoring:setup": "bash scripts/setup-monitoring.sh"
+  },
+  "notifications": {
+    "slack": {
+      "enabled": true,
+      "channel": "#deployments",
+      "events": ["deploy_success", "deploy_failure", "health_check_failure"]
+    },
+    "email": {
+      "enabled": true,
+      "recipients": ["admin@example.com"],
+      "events": ["deploy_failure", "health_check_failure"]
+    }
+  },
+  "monitoring": {
+    "enabled": true,
+    "healthCheck": {
+      "path": "/health",
+      "interval": 30000,
+      "timeout": 5000,
+      "failureThreshold": 3
+    },
+    "metrics": {
+      "enabled": true,
+      "endpoint": "/metrics",
+      "port": 9090
+    },
+    "logging": {
+      "level": "info",
+      "format": "json",
+      "destination": "render"
+    },
+    "alerts": {
+      "cpu": {
+        "enabled": true,
+        "threshold": 80,
+        "duration": 300
+      },
+      "memory": {
+        "enabled": true,
+        "threshold": 80,
+        "duration": 300
+      },
+      "responseTime": {
+        "enabled": true,
+        "threshold": 2000,
+        "duration": 300
+      },
+      "errorRate": {
+        "enabled": true,
+        "threshold": 5,
+        "duration": 300
+      }
+    }
+  },
+  "backup": {
+    "enabled": true,
+    "schedule": "0 2 * * *",
+    "retention": 7
+  },
+  "security": {
+    "cors": {
+      "enabled": true,
+      "origins": ["https://your-frontend-url.onrender.com"],
+      "credentials": true
+    },
+    "rateLimiting": {
+      "enabled": true,
+      "windowMs": 900000,
+      "maxRequests": 100
+    },
+    "helmet": {
+      "enabled": true,
+      "hsts": {
+        "maxAge": 31536000,
+        "includeSubDomains": true,
+        "preload": true
+      }
+    }
+  }
+}
