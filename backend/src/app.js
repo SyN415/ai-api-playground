@@ -164,6 +164,29 @@ process.on('SIGINT', () => {
   process.exit(0);
 });
 
+// Process error handlers
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error('Unhandled Rejection at:', { promise, reason });
+  process.exit(1);
+});
+
+process.on('uncaughtException', (error) => {
+  logger.error('Uncaught Exception:', { error: error.message, stack: error.stack });
+  process.exit(1);
+});
+
+// Service initialization with error handling
+try {
+  // Initialize services that might fail
+  const minimaxService = require('./services/minimaxService');
+  const authService = require('./services/authService');
+  
+  logger.info('Services initialized successfully');
+} catch (error) {
+  logger.error('Service initialization failed:', { error: error.message });
+  process.exit(1);
+}
+
 // Start server
 app.listen(PORT, () => {
   logger.info(`🚀 Server running on port ${PORT}`);
