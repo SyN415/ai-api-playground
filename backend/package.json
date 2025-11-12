@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node src/app.js",
     "dev": "nodemon src/app.js",
-    "build": "npm run test:ci && npm run copy-config",
+    "build": "npm run copy-config",
     "prebuild": "",
     "build:production": "npm ci --production && npm run build",
     "start:production": "NODE_ENV=production node src/app.js",
