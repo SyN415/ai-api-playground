@@ -112,9 +112,9 @@ services:
   - type: web
     name: ai-api-playground-frontend
     env: static
-    buildCommand: cd frontend && npm ci && npm run build
-    staticPublishPath: ./frontend/build
-    rootDir: .
+    buildCommand: npm ci && npm run build
+    staticPublishPath: ./build
+    rootDir: frontend
     envVars:
       - key: REACT_APP_API_BASE_URL
         fromService:
