@@ -84,3 +84,70 @@ frontend/.env.local
 
 # Roo configuration (contains sensitive data)
 .roo/
+
+# Additional sensitive files
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+*.csr
+*.der
+*.key.pem
+*.cert.pem
+*.ca.pem
+
+# IDE files that might contain sensitive data
+.vscode/settings.json
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/dictionaries
+.idea/sonarlint/
+.idea/httpRequests/
+
+# OS files
+.AppleDouble
+.LSOverride
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Additional environment files
+.env.backup
+.env.old
+.env.staging
+.env.production
+.env.docker
+.env.testing
+
+# Logs and runtime data
+lerna-debug.log*
+.pnpm-debug.log*
+.vscode-test
+
+# Optional caches
+.eslintcache
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+
+# Build outputs and caches
+.cache
+.parcel-cache
+.fusebox/
+.serverless/
+.dynamodb/
+.tern-port
+
+# Yarn v2
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*

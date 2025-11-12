@@ -142,7 +142,7 @@ export const useAuth = () => {
       if (response.success && response.data) {
         setAuthState(prev => ({
           ...prev,
-          user: response.data,
+          user: response.data || null,
           isLoading: false,
           error: null,
         }));

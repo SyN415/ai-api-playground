@@ -2,42 +2,60 @@ const { RateLimiterRedis } = require('rate-limiter-flexible');
 const redis = require('redis');
 const logger = require('../utils/logger');
 
-// Create Redis client for rate limiting
-const redisClient = redis.createClient({
-  url: process.env.REDIS_URL || 'redis://localhost:6379',
-  password: process.env.REDIS_PASSWORD || undefined,
-  socket: {
-    reconnectStrategy: (retries) => {
-      if (retries > 10) {
-        logger.error('Redis max reconnection attempts reached');
-        return new Error('Redis connection failed');
-      }
-      return Math.min(retries * 50, 500);
-    }
-  }
-});
+// Create Redis client for rate limiting (only if Redis is configured)
+let redisClient = null;
+let redisAvailable = false;
 
-redisClient.on('error', (err) => {
-  logger.error('Redis Client Error', err);
-});
-
-redisClient.on('connect', () => {
-  logger.info('Redis client connected for rate limiting');
-});
-
-redisClient.on('reconnecting', () => {
-  logger.warn('Redis client reconnecting...');
-});
-
-// Connect to Redis
-(async () => {
+if (process.env.REDIS_URL) {
   try {
-    await redisClient.connect();
-    logger.info('Connected to Redis for rate limiting');
+    redisClient = redis.createClient({
+      url: process.env.REDIS_URL,
+      password: process.env.REDIS_PASSWORD || undefined,
+      socket: {
+        reconnectStrategy: (retries) => {
+          if (retries > 3) {
+            logger.warn('Redis max reconnection attempts reached, rate limiting disabled');
+            redisAvailable = false;
+            return new Error('Redis connection failed');
+          }
+          return Math.min(retries * 50, 500);
+        }
+      }
+    });
+
+    redisClient.on('error', (err) => {
+      logger.warn('Redis Client Error (rate limiting disabled)', err.message);
+      redisAvailable = false;
+    });
+
+    redisClient.on('connect', () => {
+      logger.info('Redis client connected for rate limiting');
+      redisAvailable = true;
+    });
+
+    redisClient.on('reconnecting', () => {
+      logger.warn('Redis client reconnecting...');
+    });
+
+    // Connect to Redis
+    (async () => {
+      try {
+        await redisClient.connect();
+        logger.info('Connected to Redis for rate limiting');
+        redisAvailable = true;
+      } catch (err) {
+        logger.warn('Failed to connect to Redis, rate limiting will be disabled', err.message);
+        redisAvailable = false;
+      }
+    })();
   } catch (err) {
-    logger.error('Failed to connect to Redis', err);
+    logger.warn('Failed to initialize Redis client, rate limiting disabled', err.message);
+    redisAvailable = false;
   }
-})();
+} else {
+  logger.info('Redis not configured, rate limiting will be disabled');
+  redisAvailable = false;
+}
 
 // Rate limit configurations for different endpoints and user types
 const RATE_LIMIT_CONFIGS = {
@@ -87,10 +105,15 @@ const BLOCK_DURATIONS = {
 class RateLimitManager {
   constructor() {
     this.limiters = new Map();
-    this.initializeLimiters();
+    this.redisAvailable = redisAvailable;
+    if (this.redisAvailable) {
+      this.initializeLimiters();
+    }
   }
 
   initializeLimiters() {
+    if (!this.redisAvailable) return;
+
     // Per-IP limiters
     for (const [endpoint, tiers] of Object.entries(RATE_LIMIT_CONFIGS)) {
       for (const [tier, config] of Object.entries(tiers)) {
@@ -185,12 +208,28 @@ class RateLimitManager {
   }
 
   async checkLimit(req, endpointType, identifier) {
+    if (!this.redisAvailable) {
+      // If Redis is not available, allow all requests
+      return {
+        allowed: true,
+        remaining: 9999,
+        resetTime: new Date(Date.now() + 3600000),
+        limit: 10000
+      };
+    }
+
     const userTier = req.user ? this.getUserTier(req.user) : 'free';
     const limiterKey = `${identifier.type}:${endpointType}:${userTier}`;
     
     const limiter = this.limiters.get(limiterKey);
     if (!limiter) {
-      throw new Error(`Rate limiter not found for ${limiterKey}`);
+      logger.warn(`Rate limiter not found for ${limiterKey}, allowing request`);
+      return {
+        allowed: true,
+        remaining: 9999,
+        resetTime: new Date(Date.now() + 3600000),
+        limit: 10000
+      };
     }
 
     const key = `${identifier.value}:${endpointType}`;
@@ -215,6 +254,15 @@ class RateLimitManager {
   }
 
   async checkSlidingWindow(req, identifier) {
+    if (!this.redisAvailable || !this.slidingWindowLimiter) {
+      // If Redis is not available, allow all requests
+      return {
+        allowed: true,
+        remaining: 9999,
+        resetTime: new Date(Date.now() + 3600000)
+      };
+    }
+
     const key = `sw:${identifier.value}`;
     
     try {
@@ -235,33 +283,51 @@ class RateLimitManager {
   }
 
   async blockIdentifier(identifier, duration, reason = 'manual_block') {
-    const blockKey = `block:${identifier.type}:${identifier.value}`;
-    const blockData = {
-      reason,
-      blockedAt: new Date().toISOString(),
-      duration
-    };
-    
-    await redisClient.setEx(blockKey, duration, JSON.stringify(blockData));
-    logger.warn(`Identifier blocked: ${identifier.type}:${identifier.value}`, blockData);
+    if (!this.redisAvailable || !redisClient) {
+      logger.warn('Redis not available, cannot block identifier');
+      return;
+    }
+
+    try {
+      const blockKey = `block:${identifier.type}:${identifier.value}`;
+      const blockData = {
+        reason,
+        blockedAt: new Date().toISOString(),
+        duration
+      };
+      
+      await redisClient.setEx(blockKey, duration, JSON.stringify(blockData));
+      logger.warn(`Identifier blocked: ${identifier.type}:${identifier.value}`, blockData);
+    } catch (err) {
+      logger.error('Failed to block identifier', err);
+    }
   }
 
   async isBlocked(identifier) {
-    const blockKey = `block:${identifier.type}:${identifier.value}`;
-    const blockData = await redisClient.get(blockKey);
-    
-    if (!blockData) return { isBlocked: false };
-    
-    const blockInfo = JSON.parse(blockData);
-    const blockedAt = new Date(blockInfo.blockedAt);
-    const expiresAt = new Date(blockedAt.getTime() + blockInfo.duration * 1000);
-    
-    return {
-      isBlocked: true,
-      reason: blockInfo.reason,
-      blockedAt: blockInfo.blockedAt,
-      expiresAt: expiresAt.toISOString()
-    };
+    if (!this.redisAvailable || !redisClient) {
+      return { isBlocked: false };
+    }
+
+    try {
+      const blockKey = `block:${identifier.type}:${identifier.value}`;
+      const blockData = await redisClient.get(blockKey);
+      
+      if (!blockData) return { isBlocked: false };
+      
+      const blockInfo = JSON.parse(blockData);
+      const blockedAt = new Date(blockInfo.blockedAt);
+      const expiresAt = new Date(blockedAt.getTime() + blockInfo.duration * 1000);
+      
+      return {
+        isBlocked: true,
+        reason: blockInfo.reason,
+        blockedAt: blockInfo.blockedAt,
+        expiresAt: expiresAt.toISOString()
+      };
+    } catch (err) {
+      logger.error('Failed to check block status', err);
+      return { isBlocked: false };
+    }
   }
 }
 
