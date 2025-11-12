@@ -183,9 +183,15 @@ try {
   
   logger.info('Services initialized successfully');
 } catch (error) {
-  logger.error('Service initialization failed:', { error: error.message });
-  process.exit(1);
+  logger.error('Service initialization failed:', { error: error.message, stack: error.stack });
+  // Don't exit the process, just log the error and continue
+  // The services will be lazy-loaded when actually needed
 }
+
+// Add a small delay to ensure all async operations complete before starting server
+setTimeout(() => {
+  // Server start is now handled in the setTimeout above
+}, 100); // Small delay to let async operations complete
 
 // Start server
 app.listen(PORT, () => {

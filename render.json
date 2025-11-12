@@ -9,8 +9,8 @@
       }
     },
     "frontend": {
-      "buildCommand": "cd frontend && npm ci && npm run build",
-      "staticPublishPath": "./frontend/build",
+      "buildCommand": "npm ci && npm run build",
+      "staticPublishPath": "./build",
       "env": {
         "NODE_ENV": "production",
         "NODE_VERSION": "18",
